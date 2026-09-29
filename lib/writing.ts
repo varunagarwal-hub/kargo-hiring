@@ -33,16 +33,32 @@ const BRIEF_SCHEMA = {
 const BRIEF_SYSTEM = `You write three-sentence interview briefs for Kargo's founder.
 Rules:
 - Refer only to things stated in the CV text. Never invent employers, numbers, dates or events.
-- "strongest": one sentence naming the candidate's strongest evidence against the rubric, citing the CV line.
-- "weakest": one sentence naming the weakest or missing criterion and what the CV lacks for it.
-- "question": one specific interview question, ending with "?", that probes that weak or missing criterion by asking for the details the rubric needs (the named outside party, the ask, the result, the duration, the end point, or how it was resourced).
+- The STRONGEST and WEAKEST criteria are chosen for you from the scores. Write about exactly those two criteria; never swap them or pick others.
+- "strongest": one sentence naming the candidate's evidence for the STRONGEST criterion, citing the CV line.
+- "weakest": one sentence naming the WEAKEST criterion and what the CV lacks for it.
+- "question": one specific interview question, ending with "?", that probes the WEAKEST criterion by asking for the details the rubric needs (the named outside party, the ask, the result, the duration, the end point, or how it was resourced).
 - Refer to the candidate as "the candidate". Do not mention numeric scores.
 - Each field is exactly one sentence. Reply with JSON only.`
+
+/**
+ * Pick the brief's focus in code so it can't contradict the scores.
+ * Strongest: highest score, ties -> higher weight.
+ * Weakest: biggest weighted gap (weight x (3 - score)), ties -> lower score; never the strongest.
+ */
+export function pickBriefFocus(rubric: Rubric, scores: Pick<CriterionScore, 'criterion_id' | 'score'>[]) {
+  const rows = rubric.criteria.map((c) => ({ c, score: scores.find((s) => s.criterion_id === c.id)?.score ?? 0 }))
+  const strongest = [...rows].sort((a, b) => b.score - a.score || b.c.weight - a.c.weight)[0]
+  const weakest = rows
+    .filter((r) => r !== strongest)
+    .sort((a, b) => b.c.weight * (3 - b.score) - a.c.weight * (3 - a.score) || a.score - b.score)[0]
+  return { strongest: strongest.c, weakest: weakest.c, weakestScore: weakest.score }
+}
 
 export async function writeBrief(
   ai: AiConfig,
   opts: { candidateId: string | null; redactedCv: string; rubric: Rubric; scores: CriterionScore[]; guard: PiiGuard },
 ): Promise<string> {
+  const focus = pickBriefFocus(opts.rubric, opts.scores)
   const assessment = opts.rubric.criteria
     .map((c) => {
       const s = opts.scores.find((x) => x.criterion_id === c.id)
@@ -56,7 +72,13 @@ export async function writeBrief(
     fixed:
       `ROLE: ${ROLE_TITLE[opts.rubric.role]}\n\n` +
       `RUBRIC CRITERIA:\n${opts.rubric.criteria.map((c) => `${c.position}. ${c.name}\nStrong: ${c.strong_description}`).join('\n\n')}`,
-    candidate: [`ASSESSMENT AGAINST THE RUBRIC (from this CV):\n${assessment}`, cvBlock(opts.redactedCv)],
+    candidate: [
+      `ASSESSMENT AGAINST THE RUBRIC (from this CV):\n${assessment}\n\n` +
+        `STRONGEST criterion: ${focus.strongest.position}. ${focus.strongest.name}\n` +
+        `WEAKEST criterion: ${focus.weakest.position}. ${focus.weakest.name}` +
+        (focus.weakestScore >= 2 ? ' (met, but the thinnest evidence relative to its weight; probe for depth)' : ''),
+      cvBlock(opts.redactedCv),
+    ],
     schema: BriefReply,
     responseSchema: BRIEF_SCHEMA,
     validate: (r) => {

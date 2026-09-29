@@ -143,3 +143,19 @@ describe('scoring', () => {
     expect(r.spm.total).toBe(computeTotal(spm, r.spm.scores))
   })
 })
+
+describe('brief focus', () => {
+  it('is picked from the scores, so the brief cannot contradict them', async () => {
+    const { pickBriefFocus } = await import('@/lib/writing')
+    const s = (vals: number[], r: Rubric) => r.criteria.map((c, i) => ({ criterion_id: c.id, score: vals[i] }))
+    // Priya's live PM scores: 3, 2, 2, 3 -> strongest "Got a yes" (3, weight 34); weakest "Stayed the named contact" (gap 27).
+    const f = pickBriefFocus(pm, s([3, 2, 2, 3], pm))
+    expect(f.strongest.position).toBe(1)
+    expect(f.weakest.position).toBe(2)
+    // A missing criterion always wins "weakest" over a partial one of similar weight.
+    expect(pickBriefFocus(pm, s([2, 1, 0, 2], pm)).weakest.position).toBe(3)
+    // All perfect: still two different criteria.
+    const all = pickBriefFocus(spm, s([3, 3, 3, 3], spm))
+    expect(all.strongest.position).not.toBe(all.weakest.position)
+  })
+})

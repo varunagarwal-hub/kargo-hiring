@@ -57,7 +57,7 @@ export function UploadPanel() {
             e.target.value = ''
           }}
         />
-        <span className="muted small">PDF or DOCX. Each CV takes about 30–60 seconds (scores, brief, draft).</span>
+        <span className="muted small">PDF or DOCX. Each CV takes about 1–3 minutes (scores, brief, draft).</span>
       </div>
       {items.length > 0 && (
         <ul className="small" style={{ margin: '10px 0 0', paddingLeft: 18 }}>
