@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth'
 import { loadSettings, q } from '@/lib/db'
-import { Nav } from '@/app/nav'
+import { Shell } from '@/app/nav'
+import { PageHeader, Pill } from '@/app/ui'
 import { SettingsForm } from './form'
 
 export const dynamic = 'force-dynamic'
@@ -13,17 +14,15 @@ export default async function SettingsPage() {
     q<{ role: string; version: number }>(`select role, version from rubrics where active order by role`),
   ])
   return (
-    <>
-      <Nav />
-      <main>
-        <h1>Settings</h1>
-        <p className="muted small">
-          Active rubrics:{' '}
-          {rubrics.map((r) => `${r.role.toUpperCase()} v${r.version}`).join(', ')}.
-          To change the rubric itself, see README → “Changing the rubric”.
-        </p>
-        <SettingsForm s={s} fromEmail={process.env.RESEND_FROM_EMAIL || '(not set)'} />
-      </main>
-    </>
+    <Shell>
+      <PageHeader
+        title="Settings"
+        subtitle="Decision lines, interview briefs and how emails are sent."
+        actions={rubrics.map((r) => (
+          <Pill key={r.role} tone="info">{r.role.toUpperCase()} rubric v{r.version}</Pill>
+        ))}
+      />
+      <SettingsForm s={s} fromEmail={process.env.RESEND_FROM_EMAIL || ''} />
+    </Shell>
   )
 }

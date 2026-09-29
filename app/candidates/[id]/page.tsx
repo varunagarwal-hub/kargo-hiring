@@ -4,7 +4,8 @@ import { requireAuth } from '@/lib/auth'
 import { loadSettings, one, q } from '@/lib/db'
 import { NAME_TOKEN } from '@/lib/pii/redact'
 import { ROLES, ROLE_LABEL, otherRole, type Pii, type Role } from '@/lib/types'
-import { Nav } from '@/app/nav'
+import { Shell } from '@/app/nav'
+import { Avatar, Icon, LinePill, Pill, ScoreBar, ScoreDots, fmtDate, fmtDateTime } from '@/app/ui'
 import { EmailEditor, PiiForm, RescoreButton } from './forms'
 
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,8 @@ export const maxDuration = 300 // re-score runs the whole pipeline
 type ScoreRow = { score: number; model_score: number; gated: boolean; reason: string; criteria: { position: number; name: string; weight: number } }
 type TotalRow = { id: string; role: Role; total: number; above_line: boolean; model: string; created_at: string; rubrics: { version: number }; scores: ScoreRow[] }
 type EmailRow = { id: string; type: string; subject: string; body: string; status: string; sent_at: string | null; resend_id: string | null; last_error: string | null }
+
+const ROLE_TITLE: Record<Role, string> = { pm: 'Product Manager', spm: 'Senior Product Manager' }
 
 export default async function CandidatePage({ params }: { params: Promise<{ id: string }> }) {
   await requireAuth()
@@ -43,124 +46,196 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
   const pii = piiRow ?? { name: null, email: null, phone: null, linkedin_url: null, github_url: null, other_urls: [], address: null }
   const sent = emails.find((e) => e.status !== 'draft')
   const draft = emails.find((e) => e.status === 'draft')
+  const email = sent ?? draft
   const line = (r: Role) => (r === 'pm' ? settings.pm_threshold : settings.spm_threshold)
   const display = (t: string) => t.replaceAll(NAME_TOKEN, pii.name?.split(/\s+/)[0] || 'the candidate')
   const other = totals.find((t) => t.role === otherRole(c.role_applied))
+  const from = `${settings.sender_name} <${process.env.RESEND_FROM_EMAIL || 'not set'}>`
 
   return (
-    <>
-      <Nav />
-      <main>
-        <p className="small"><Link href="/">← All candidates</Link></p>
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h1 style={{ margin: 0 }}>
-            {pii.name || 'Unnamed'} <span className="muted" style={{ fontWeight: 400 }}>· applied {ROLE_LABEL[c.role_applied]}</span>
-          </h1>
-          <div className="row">
-            {c.cv_file_name && <a href={`/api/cv/${c.id}`} target="_blank">Original CV ({c.cv_file_name})</a>}
-            <RescoreButton candidateId={c.id} />
+    <Shell>
+      <div className="crumbs">
+        <Link href="/"><Icon name="arrowLeft" size={14} />Candidates</Link>
+      </div>
+
+      <section className="card profile" style={{ marginBottom: 20 }}>
+        <Avatar name={pii.name} size={52} />
+        <div>
+          <h1>{pii.name || 'Unnamed candidate'}</h1>
+          <div className="profile-meta">
+            <span><Icon name="file" size={14} />Applied for {ROLE_TITLE[c.role_applied]}</span>
+            <span><Icon name="clock" size={14} />Added {fmtDate(c.created_at)}</span>
+            {pii.email && <span><Icon name="mail" size={14} />{pii.email}</span>}
           </div>
         </div>
-        {c.status === 'processing' && <p className="pill warn">Scoring in progress…</p>}
-        {c.status === 'error' && <p className="error">Processing failed: {c.error_message}. Fix personal details if needed, then Re-score.</p>}
-        {other?.above_line && (
-          <p className="pill warn">
-            Also clears the {ROLE_LABEL[other.role]} line ({Number(other.total).toFixed(1)} ≥ {line(other.role)}): consider them for {ROLE_LABEL[other.role]}.
-          </p>
-        )}
+        <div className="profile-actions">
+          {c.cv_file_name && (
+            <a className="btn" href={`/api/cv/${c.id}`} target="_blank" rel="noreferrer">
+              <Icon name="file" />Original CV
+            </a>
+          )}
+          <RescoreButton candidateId={c.id} />
+        </div>
+      </section>
 
-        <div className="grid2" style={{ marginTop: 12 }}>
+      {(c.status !== 'ready' || other?.above_line) && (
+        <div className="alerts">
+          {c.status === 'processing' && (
+            <div className="alert alert-info"><span className="spinner" />Scoring in progress. Refresh in a minute.</div>
+          )}
+          {c.status === 'error' && (
+            <div className="alert alert-bad">
+              <Icon name="alert" />
+              <div><strong>Processing failed.</strong> {c.error_message} Fix the personal details below if needed, then re-score.</div>
+            </div>
+          )}
+          {other?.above_line && (
+            <div className="alert alert-warn">
+              <Icon name="swap" />
+              <div>
+                Also clears the <strong>{ROLE_LABEL[other.role]}</strong> line ({Number(other.total).toFixed(1)} ≥ {line(other.role)}). Consider them for{' '}
+                {ROLE_TITLE[other.role]}.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="stack">
+        <div className="grid-2">
           {ROLES.map((role) => {
             const t = totals.find((x) => x.role === role)
             const brief = briefs.find((b) => b.role === role)
             return (
               <section className="card" key={role}>
-                <div className="row" style={{ justifyContent: 'space-between' }}>
-                  <h2 style={{ margin: 0 }}>{ROLE_LABEL[role]} rubric</h2>
-                  {t ? (
-                    <span>
-                      <strong style={{ fontSize: 18 }}>{Number(t.total).toFixed(1)}</strong>
-                      <span className="muted"> / 100 · line {line(role)} </span>
-                      {t.above_line ? <span className="pill good">above</span> : <span className="pill">below</span>}
-                    </span>
-                  ) : (
-                    <span className="muted">not scored</span>
-                  )}
+                <div className="card-head">
+                  <div>
+                    <h2>{ROLE_TITLE[role]}</h2>
+                    <p>{role === c.role_applied ? 'Role applied for' : 'Cross-check'}{t ? ` · rubric v${t.rubrics.version}` : ''}</p>
+                  </div>
+                  {t && <LinePill above={t.above_line} line={line(role)} />}
                 </div>
-                {t && (
+                {t ? (
                   <>
-                    <table style={{ marginTop: 8 }}>
-                      <tbody>
-                        {[...(t.scores ?? [])]
-                          .sort((a, b) => a.criteria.position - b.criteria.position)
-                          .map((s) => (
-                            <tr key={s.criteria.position}>
-                              <td style={{ width: 34 }}><span className={`score s${s.score}`}>{s.score}</span></td>
-                              <td>
-                                <strong>{s.criteria.name}</strong> <span className="muted small">weight {s.criteria.weight}</span>
-                                <div>{display(s.reason)}</div>
-                                {s.gated && (
-                                  <div className="small" style={{ color: 'var(--warn)' }}>
-                                    Model gave {s.model_score}; capped to {s.score} because the PM bar for this criterion is not met.
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                    <p className="muted small">
-                      Rubric v{t.rubrics.version} · {t.model} · {new Date(t.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                    </p>
+                    <div className="card-body" style={{ paddingBottom: 14 }}>
+                      <div className="total">
+                        <span className="total-value">{Number(t.total).toFixed(1)}</span>
+                        <span className="total-of">/ 100</span>
+                      </div>
+                      <div className="total-bar">
+                        <ScoreBar value={Number(t.total)} line={line(role)} label={ROLE_LABEL[role]} />
+                      </div>
+                    </div>
+                    <ul className="criteria">
+                      {[...(t.scores ?? [])]
+                        .sort((a, b) => a.criteria.position - b.criteria.position)
+                        .map((s) => (
+                          <li key={s.criteria.position}>
+                            <div className="criteria-head">
+                              <ScoreDots score={s.score} />
+                              <span className="name">{s.criteria.name}</span>
+                              <span className="weight">Weight {s.criteria.weight}</span>
+                            </div>
+                            <p className="reason">{display(s.reason)}</p>
+                            {s.gated && (
+                              <p className="gated">
+                                <Icon name="info" size={13} />
+                                Model gave {s.model_score}; capped at {s.score} because the PM bar for this criterion isn&apos;t met.
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                    </ul>
+                    {brief ? (
+                      <div className="brief">
+                        <div className="brief-title"><Icon name="sparkle" size={13} />Interview brief</div>
+                        <p>{display(brief.text)}</p>
+                      </div>
+                    ) : (
+                      <p className="brief-empty">
+                        Interview briefs are written for the top {settings.top_n} in the {ROLE_LABEL[role]} ranking.
+                      </p>
+                    )}
+                    <p className="card-meta">Scored {fmtDateTime(t.created_at)} · {t.model}</p>
                   </>
+                ) : (
+                  <div className="empty">Not scored yet.</div>
                 )}
-                <h3>Interview brief</h3>
-                {brief ? <p>{display(brief.text)}</p> : <p className="muted">Only generated for the top {settings.top_n} in the {ROLE_LABEL[role]} ranking.</p>}
               </section>
             )
           })}
         </div>
 
         <section className="card">
-          <h2 style={{ marginTop: 0 }}>
-            Email{' '}
-            {(sent ?? draft) && <span className="pill">{(sent ?? draft)!.type === 'invite' ? 'interview invite' : 'rejection'}</span>}
-          </h2>
+          <div className="card-head">
+            <div>
+              <h2>{email ? (email.type === 'invite' ? 'Interview invitation' : 'Rejection email') : 'Email'}</h2>
+              <p>
+                {sent
+                  ? 'This email has been sent and can no longer be edited.'
+                  : 'Written from the CV. Review and edit, then send. Scores are never mentioned.'}
+              </p>
+            </div>
+            {sent?.status === 'sent' && <Pill tone="good" icon="check">Sent {sent.sent_at && fmtDateTime(sent.sent_at)}</Pill>}
+            {sent?.status === 'sending' && <Pill tone="warn" icon="clock">Sending</Pill>}
+            {!sent && draft && <Pill tone="neutral" icon="mail">Draft</Pill>}
+          </div>
           {sent ? (
             <>
-              <p>
-                {sent.status === 'sent' ? (
-                  <span className="pill good">
-                    Sent {sent.sent_at && new Date(sent.sent_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} to {pii.email}
-                  </span>
-                ) : (
-                  <span className="pill warn">Sending… (if this persists, check the Resend dashboard before doing anything)</span>
-                )}{' '}
-                {sent.resend_id && <span className="muted small">Resend id {sent.resend_id}</span>}
-              </p>
-              <p><strong>{sent.subject}</strong></p>
-              <pre className="body">{sent.body}</pre>
-              <button className="primary" disabled style={{ marginTop: 10 }}>Sent</button>
+              <div className="composer-row"><span className="k">To</span>{pii.email}</div>
+              <div className="composer-row"><span className="k">Subject</span><strong>{sent.subject}</strong></div>
+              <pre className="sent-body">{sent.body}</pre>
+              <div className="card-foot">
+                <span className="muted small">
+                  {sent.status === 'sending'
+                    ? 'If this stays in "Sending", check the Resend dashboard before doing anything else.'
+                    : `Resend id ${sent.resend_id ?? '–'}`}
+                </span>
+                <button className="btn btn-primary" disabled><Icon name="check" />Sent</button>
+              </div>
             </>
           ) : draft ? (
-            <EmailEditor key={draft.id} candidateId={c.id} emailId={draft.id} subject={draft.subject} body={draft.body} to={pii.email} lastError={draft.last_error} />
+            <EmailEditor
+              key={draft.id}
+              candidateId={c.id}
+              emailId={draft.id}
+              subject={draft.subject}
+              body={draft.body}
+              to={pii.email}
+              from={from}
+              replyTo={settings.reply_to}
+              lastError={draft.last_error}
+            />
           ) : (
-            <p className="muted">No draft yet.</p>
+            <div className="empty">No draft yet. It&apos;s written once scoring finishes.</div>
           )}
         </section>
 
-        <div className="grid2">
-          <section className="card">
-            <h2 style={{ marginTop: 0 }}>Personal details</h2>
-            <p className="muted small">Parsed from the CV and stored separately. Never sent to the AI. Correct anything parsing got wrong.</p>
-            <PiiForm candidateId={c.id} pii={pii} />
-          </section>
-          <section className="card">
-            <h2 style={{ marginTop: 0 }}>Redacted CV (exactly what the AI sees)</h2>
-            <pre className="body small" style={{ maxHeight: 520, overflow: 'auto' }}>{c.redacted_cv_text}</pre>
-          </section>
+        <div className="grid-2">
+          <details className="card">
+            <summary className="card-head">
+              <div>
+                <h2>Personal details</h2>
+                <p>Stored separately and never sent to the AI.</p>
+              </div>
+              <Icon name="chevron" className="chev" />
+            </summary>
+            <div className="card-body">
+              <PiiForm candidateId={c.id} pii={pii} />
+            </div>
+          </details>
+          <details className="card">
+            <summary className="card-head">
+              <div>
+                <h2>Redacted CV</h2>
+                <p>Exactly the text the AI sees.</p>
+              </div>
+              <Icon name="chevron" className="chev" />
+            </summary>
+            <pre className="cv">{c.redacted_cv_text}</pre>
+          </details>
         </div>
-      </main>
-    </>
+      </div>
+    </Shell>
   )
 }

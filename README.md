@@ -91,3 +91,15 @@ npm run test-run  # live Gemini run on 3 generated sample CVs → test-run/REPOR
 - **Scores can vary by one point on borderline criteria between runs**, even at temperature 0 (seen in the test run: 0 vs 1 on "user interviews"). Near the line, re-scoring can flip above/below. If this matters, the next step is scoring each rubric 3× and taking the per-criterion median (3× cost).
 - **Scanned (image-only) PDFs** are rejected with a clear message; there is no OCR.
 - The model is a *preview* model; Google may retire it. Change `GEMINI_MODEL` if calls start failing.
+
+## Previewing changes locally on a Neon branch
+Work against an isolated copy of production instead of production itself:
+```bash
+neon branches create --name ui-preview --parent production
+neon env pull --branch ui-preview --file .env.preview.local    # gitignored
+# add APP_PASSWORD and SESSION_SECRET for local use to .env.preview.local
+npx tsx --conditions=react-server scripts/seed-preview.ts       # optional: 3 fictional sample CVs
+node scripts/dev-preview.mjs                                    # http://localhost:3100
+neon branches delete ui-preview                                 # when done
+```
+`seed-preview.ts` refuses to run against the `production` branch.

@@ -11,10 +11,13 @@ pg.types.setTypeParser(1700, (v) => parseFloat(v)) // numeric
 
 let pool: pg.Pool | null = null
 
+/** Pin today's strict TLS (full cert + host verification); pg v9 will weaken sslmode=require. */
+export const strictSsl = (url: string) => url.replace(/([?&])sslmode=(prefer|require|verify-ca)\b/, '$1sslmode=verify-full')
+
 /** Server-only pool on the pooled Neon URL. The browser never receives these credentials. */
 function getPool(): pg.Pool {
   if (!pool) {
-    pool = new pg.Pool({ connectionString: env.databaseUrl(), max: 5, idleTimeoutMillis: 5000 })
+    pool = new pg.Pool({ connectionString: strictSsl(env.databaseUrl()), max: 5, idleTimeoutMillis: 5000 })
     // Lets Vercel Fluid compute close idle clients before a function instance suspends.
     attachDatabasePool(pool)
   }

@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "preview", "runtimeExecutable": "node", "runtimeArgs": ["scripts/dev-preview.mjs"], "port": 3100 }
+  ]
+}

@@ -14,7 +14,7 @@ const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL
 if (!url) throw new Error('Set DATABASE_URL_UNPOOLED (run `neon env pull`)')
 
 const dir = path.resolve(import.meta.dirname, '../db/migrations')
-const client = new pg.Client({ connectionString: url })
+const client = new pg.Client({ connectionString: url.replace(/([?&])sslmode=(prefer|require|verify-ca)\b/, '$1sslmode=verify-full') })
 await client.connect()
 try {
   await client.query(`create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())`)
