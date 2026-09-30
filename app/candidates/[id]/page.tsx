@@ -5,7 +5,7 @@ import { loadSettings, one, q } from '@/lib/db'
 import { NAME_TOKEN } from '@/lib/pii/redact'
 import { ROLES, ROLE_LABEL, otherRole, type Pii, type Role } from '@/lib/types'
 import { Shell } from '@/app/nav'
-import { Avatar, Icon, LinePill, Pill, ScoreBar, ScoreDots, fmtDate, fmtDateTime } from '@/app/ui'
+import { Icon, LineMark, ScoreBar, ScoreMarks, fmtDate, fmtDateTime } from '@/app/ui'
 import { EmailEditor, PiiForm, RescoreButton } from './forms'
 
 export const dynamic = 'force-dynamic'
@@ -54,187 +54,156 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
 
   return (
     <Shell>
-      <div className="crumbs">
-        <Link href="/"><Icon name="arrowLeft" size={14} />Candidates</Link>
-      </div>
+      <Link href="/" className="crumb"><Icon name="arrowLeft" size={13} />All candidates</Link>
 
-      <section className="card profile" style={{ marginBottom: 20 }}>
-        <Avatar name={pii.name} size={52} />
+      <header className="dossier-head">
         <div>
           <h1>{pii.name || 'Unnamed candidate'}</h1>
-          <div className="profile-meta">
-            <span><Icon name="file" size={14} />Applied for {ROLE_TITLE[c.role_applied]}</span>
-            <span><Icon name="clock" size={14} />Added {fmtDate(c.created_at)}</span>
-            {pii.email && <span><Icon name="mail" size={14} />{pii.email}</span>}
+          <div className="dossier-meta">
+            <span>Applied for {ROLE_TITLE[c.role_applied]}</span>
+            <span>Received {fmtDate(c.created_at)}</span>
+            {pii.email && <span>{pii.email}</span>}
           </div>
         </div>
-        <div className="profile-actions">
+        <div className="dossier-actions">
           {c.cv_file_name && (
-            <a className="btn" href={`/api/cv/${c.id}`} target="_blank" rel="noreferrer">
+            <a className="btn btn-quiet" href={`/api/cv/${c.id}`} target="_blank" rel="noreferrer">
               <Icon name="file" />Original CV
             </a>
           )}
           <RescoreButton candidateId={c.id} />
         </div>
-      </section>
+      </header>
 
       {(c.status !== 'ready' || other?.above_line) && (
-        <div className="alerts">
+        <div className="notes">
           {c.status === 'processing' && (
-            <div className="alert alert-info"><span className="spinner" />Scoring in progress. Refresh in a minute.</div>
+            <p className="note note-accent"><span className="spinner" style={{ marginRight: 8, verticalAlign: -1 }} />Scoring in progress. Refresh in a minute.</p>
           )}
           {c.status === 'error' && (
-            <div className="alert alert-bad">
-              <Icon name="alert" />
-              <div><strong>Processing failed.</strong> {c.error_message} Fix the personal details below if needed, then re-score.</div>
-            </div>
+            <p className="note note-bad"><strong>Processing failed.</strong> {c.error_message} Fix the personal details below if needed, then re-score.</p>
           )}
           {other?.above_line && (
-            <div className="alert alert-warn">
-              <Icon name="swap" />
-              <div>
-                Also clears the <strong>{ROLE_LABEL[other.role]}</strong> line ({Number(other.total).toFixed(1)} ≥ {line(other.role)}). Consider them for{' '}
-                {ROLE_TITLE[other.role]}.
-              </div>
-            </div>
+            <p className="note note-accent">
+              <strong>Also clears the {ROLE_LABEL[other.role]} line</strong> ({Number(other.total).toFixed(1)} against {line(other.role)}). Worth considering for {ROLE_TITLE[other.role]}.
+            </p>
           )}
         </div>
       )}
 
-      <div className="stack">
-        <div className="grid-2">
-          {ROLES.map((role) => {
-            const t = totals.find((x) => x.role === role)
-            const brief = briefs.find((b) => b.role === role)
-            return (
-              <section className="card" key={role}>
-                <div className="card-head">
-                  <div>
-                    <h2>{ROLE_TITLE[role]}</h2>
-                    <p>{role === c.role_applied ? 'Role applied for' : 'Cross-check'}{t ? ` · rubric v${t.rubrics.version}` : ''}</p>
+      <div className="columns">
+        {ROLES.map((role) => {
+          const t = totals.find((x) => x.role === role)
+          const brief = briefs.find((b) => b.role === role)
+          return (
+            <section className="column" key={role}>
+              <div className="column-head">
+                <h2>{ROLE_TITLE[role]}</h2>
+                <span className="kicker">{role === c.role_applied ? 'Applied' : 'Cross-check'}</span>
+              </div>
+              {t ? (
+                <>
+                  <div className="total">
+                    <b>{Number(t.total).toFixed(1)}</b>
+                    <span>of 100 · line {line(role)}</span>
                   </div>
-                  {t && <LinePill above={t.above_line} line={line(role)} />}
-                </div>
-                {t ? (
-                  <>
-                    <div className="card-body" style={{ paddingBottom: 14 }}>
-                      <div className="total">
-                        <span className="total-value">{Number(t.total).toFixed(1)}</span>
-                        <span className="total-of">/ 100</span>
-                      </div>
-                      <div className="total-bar">
-                        <ScoreBar value={Number(t.total)} line={line(role)} label={ROLE_LABEL[role]} />
-                      </div>
-                    </div>
-                    <ul className="criteria">
-                      {[...(t.scores ?? [])]
-                        .sort((a, b) => a.criteria.position - b.criteria.position)
-                        .map((s) => (
-                          <li key={s.criteria.position}>
-                            <div className="criteria-head">
-                              <ScoreDots score={s.score} />
-                              <span className="name">{s.criteria.name}</span>
-                              <span className="weight">Weight {s.criteria.weight}</span>
-                            </div>
-                            <p className="reason">{display(s.reason)}</p>
-                            {s.gated && (
-                              <p className="gated">
-                                <Icon name="info" size={13} />
-                                Model gave {s.model_score}; capped at {s.score} because the PM bar for this criterion isn&apos;t met.
-                              </p>
-                            )}
-                          </li>
-                        ))}
-                    </ul>
-                    {brief ? (
-                      <div className="brief">
-                        <div className="brief-title"><Icon name="sparkle" size={13} />Interview brief</div>
-                        <p>{display(brief.text)}</p>
-                      </div>
-                    ) : (
-                      <p className="brief-empty">
-                        Interview briefs are written for the top {settings.top_n} in the {ROLE_LABEL[role]} ranking.
-                      </p>
-                    )}
-                    <p className="card-meta">Scored {fmtDateTime(t.created_at)} · {t.model}</p>
-                  </>
-                ) : (
-                  <div className="empty">Not scored yet.</div>
-                )}
-              </section>
-            )
-          })}
-        </div>
+                  <div className="total-rule"><ScoreBar value={Number(t.total)} line={line(role)} label={ROLE_LABEL[role]} showValue={false} /></div>
+                  <div style={{ marginTop: 12 }}><LineMark above={t.above_line} /></div>
 
-        <section className="card">
-          <div className="card-head">
-            <div>
-              <h2>{email ? (email.type === 'invite' ? 'Interview invitation' : 'Rejection email') : 'Email'}</h2>
-              <p>
-                {sent
-                  ? 'This email has been sent and can no longer be edited.'
-                  : 'Written from the CV. Review and edit, then send. Scores are never mentioned.'}
-              </p>
-            </div>
-            {sent?.status === 'sent' && <Pill tone="good" icon="check">Sent {sent.sent_at && fmtDateTime(sent.sent_at)}</Pill>}
-            {sent?.status === 'sending' && <Pill tone="warn" icon="clock">Sending</Pill>}
-            {!sent && draft && <Pill tone="neutral" icon="mail">Draft</Pill>}
+                  <ol className="criteria">
+                    {[...(t.scores ?? [])]
+                      .sort((a, b) => a.criteria.position - b.criteria.position)
+                      .map((s) => (
+                        <li key={s.criteria.position}>
+                          <div className="criteria-head">
+                            <span className="name">{s.criteria.name}</span>
+                            <ScoreMarks score={s.score} />
+                            <span className="weight">weight {s.criteria.weight}</span>
+                          </div>
+                          <p className="reason">{display(s.reason)}</p>
+                          {s.gated && (
+                            <p className="gated">The model gave {s.model_score}; held to {s.score} because the PM bar for this criterion isn&apos;t met.</p>
+                          )}
+                        </li>
+                      ))}
+                  </ol>
+
+                  {brief ? (
+                    <blockquote className="brief" style={{ marginLeft: 0, marginRight: 0 }}>
+                      <span className="kicker">Interview brief</span>
+                      <p>{display(brief.text)}</p>
+                    </blockquote>
+                  ) : (
+                    <p className="brief-none">Briefs are written for the top {settings.top_n} in the {ROLE_LABEL[role]} ranking.</p>
+                  )}
+                  <p className="stamp">Rubric v{t.rubrics.version} · scored {fmtDateTime(t.created_at)} · {t.model}</p>
+                </>
+              ) : (
+                <p className="faint" style={{ marginTop: 16 }}>Not scored yet.</p>
+              )}
+            </section>
+          )
+        })}
+      </div>
+
+      <div className="section-title">
+        <h2>{email ? (email.type === 'invite' ? 'Invitation to interview' : 'Rejection') : 'Email'}</h2>
+        <p>{sent ? 'Sent. It can no longer be edited.' : 'Drafted from the CV. Edit freely before sending; scores are never mentioned.'}</p>
+      </div>
+
+      {sent ? (
+        <div className="letter">
+          <div className="letter-row"><span className="k">To</span><span>{pii.email}</span></div>
+          <div className="letter-row"><span className="k">Subject</span><strong style={{ fontWeight: 500 }}>{sent.subject}</strong></div>
+          <pre className="letter-sent">{sent.body}</pre>
+          <div className="letter-foot">
+            <span className="hint">
+              {sent.status === 'sending'
+                ? 'Still marked as sending. Check the Resend dashboard before doing anything else.'
+                : `Resend reference ${sent.resend_id ?? '—'}`}
+            </span>
+            {sent.status === 'sent' ? (
+              <span className="sent-stamp">Sent {sent.sent_at && fmtDateTime(sent.sent_at)}</span>
+            ) : (
+              <span className="kicker">Sending</span>
+            )}
           </div>
-          {sent ? (
-            <>
-              <div className="composer-row"><span className="k">To</span>{pii.email}</div>
-              <div className="composer-row"><span className="k">Subject</span><strong>{sent.subject}</strong></div>
-              <pre className="sent-body">{sent.body}</pre>
-              <div className="card-foot">
-                <span className="muted small">
-                  {sent.status === 'sending'
-                    ? 'If this stays in "Sending", check the Resend dashboard before doing anything else.'
-                    : `Resend id ${sent.resend_id ?? '–'}`}
-                </span>
-                <button className="btn btn-primary" disabled><Icon name="check" />Sent</button>
-              </div>
-            </>
-          ) : draft ? (
-            <EmailEditor
-              key={draft.id}
-              candidateId={c.id}
-              emailId={draft.id}
-              subject={draft.subject}
-              body={draft.body}
-              to={pii.email}
-              from={from}
-              replyTo={settings.reply_to}
-              lastError={draft.last_error}
-            />
-          ) : (
-            <div className="empty">No draft yet. It&apos;s written once scoring finishes.</div>
-          )}
-        </section>
-
-        <div className="grid-2">
-          <details className="card">
-            <summary className="card-head">
-              <div>
-                <h2>Personal details</h2>
-                <p>Stored separately and never sent to the AI.</p>
-              </div>
-              <Icon name="chevron" className="chev" />
-            </summary>
-            <div className="card-body">
-              <PiiForm candidateId={c.id} pii={pii} />
-            </div>
-          </details>
-          <details className="card">
-            <summary className="card-head">
-              <div>
-                <h2>Redacted CV</h2>
-                <p>Exactly the text the AI sees.</p>
-              </div>
-              <Icon name="chevron" className="chev" />
-            </summary>
-            <pre className="cv">{c.redacted_cv_text}</pre>
-          </details>
         </div>
+      ) : draft ? (
+        <EmailEditor
+          key={draft.id}
+          candidateId={c.id}
+          emailId={draft.id}
+          subject={draft.subject}
+          body={draft.body}
+          to={pii.email}
+          from={from}
+          replyTo={settings.reply_to}
+          lastError={draft.last_error}
+        />
+      ) : (
+        <p className="faint">No draft yet. It&apos;s written once scoring finishes.</p>
+      )}
+
+      <div style={{ marginTop: 48 }}>
+        <details className="fold">
+          <summary>
+            <h2>Personal details</h2>
+            <span className="faint">Kept apart from the CV text and never sent to the AI</span>
+          </summary>
+          <div className="fold-body">
+            <PiiForm candidateId={c.id} pii={pii} />
+          </div>
+        </details>
+        <details className="fold">
+          <summary>
+            <h2>Redacted CV</h2>
+            <span className="faint">Exactly what the AI reads</span>
+          </summary>
+          <div className="fold-body">
+            <pre className="cv">{c.redacted_cv_text}</pre>
+          </div>
+        </details>
       </div>
     </Shell>
   )

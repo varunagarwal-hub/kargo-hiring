@@ -2,26 +2,25 @@
 
 import { useActionState } from 'react'
 import { rescoreAction, saveDraftAction, savePiiAction, sendAction, type ActionState } from './actions'
-import { Icon } from '@/app/ui'
 import type { Pii } from '@/lib/types'
 
 function Status({ s }: { s: ActionState }) {
-  if (s.error) return <div className="alert alert-bad"><Icon name="alert" />{s.error}</div>
-  if (s.ok) return <div className="alert alert-good"><Icon name="checkCircle" />{s.ok}</div>
+  if (s.error) return <p className="note note-bad">{s.error}</p>
+  if (s.ok) return <p className="note note-good">{s.ok}</p>
   return null
 }
 
 export function RescoreButton({ candidateId }: { candidateId: string }) {
   const [state, action, pending] = useActionState(rescoreAction, {})
   return (
-    <form action={action} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <form action={action} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <input type="hidden" name="candidate_id" value={candidateId} />
-      <button className="btn" disabled={pending} title="Score again and regenerate the brief and draft. Sent emails are never changed.">
-        {pending ? <span className="spinner" /> : <Icon name="refresh" />}
-        {pending ? 'Re-scoring…' : 'Re-score'}
+      <button className="btn" disabled={pending} title="Score again and rewrite the brief and draft. A sent email is never changed.">
+        {pending && <span className="spinner" />}
+        {pending ? 'Re-scoring' : 'Re-score'}
       </button>
-      {state.error && <span className="pill pill-bad" title={state.error}><Icon name="alert" size={12} />Failed</span>}
-      {state.ok && !pending && <span className="pill pill-good"><Icon name="check" size={12} />Updated</span>}
+      {state.error && <span className="mark mark-bad" title={state.error}>Failed</span>}
+      {state.ok && !pending && <span className="mark mark-good">Updated</span>}
     </form>
   )
 }
@@ -42,25 +41,25 @@ export function PiiForm({ candidateId, pii }: { candidateId: string; pii: Pii })
     </div>
   )
   return (
-    <form action={action}>
+    <form action={action} style={{ maxWidth: 780 }}>
       <input type="hidden" name="candidate_id" value={candidateId} />
       <div className="form-grid">
-        {field('name', 'Full name', { span: true, hint: 'Every occurrence is replaced with [CANDIDATE] before any AI call.' })}
-        {field('email', 'Email', { type: 'email', hint: 'Emails are sent to this address.' })}
+        {field('name', 'Full name', { span: true, hint: 'Every occurrence is replaced with [CANDIDATE] before the AI sees the CV.' })}
+        {field('email', 'Email', { type: 'email', hint: 'The email is sent here.' })}
         {field('phone', 'Phone')}
-        {field('linkedin_url', 'LinkedIn URL')}
-        {field('github_url', 'GitHub URL')}
-        {field('other_urls', 'Other personal URLs', { span: true, hint: 'Separate with spaces.' })}
+        {field('linkedin_url', 'LinkedIn')}
+        {field('github_url', 'GitHub')}
+        {field('other_urls', 'Other personal links', { span: true, hint: 'Separate with spaces.' })}
         {field('address', 'Home address', { span: true })}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 20, flexWrap: 'wrap' }}>
         <button className="btn btn-primary" disabled={pending}>
           {pending && <span className="spinner" />}
-          {pending ? 'Saving…' : 'Save details'}
+          {pending ? 'Saving' : 'Save details'}
         </button>
-        <span className="hint">If the redacted text changes, the CV is re-scored automatically.</span>
+        <span className="hint">If the redacted text changes, the CV is scored again.</span>
       </div>
-      {(state.ok || state.error) && <div style={{ marginTop: 12 }}><Status s={state} /></div>}
+      {(state.ok || state.error) && <div style={{ marginTop: 14 }}><Status s={state} /></div>}
     </form>
   )
 }
@@ -79,44 +78,41 @@ export function EmailEditor(props: {
   const [sendState, send, sending] = useActionState(sendAction, {})
   const busy = saving || sending
   const notice = sendState.ok || sendState.error ? sendState : saveState
+  const showLastError = props.lastError && !sendState.ok && !sendState.error && !saveState.ok
   return (
-    <form>
+    <form className="letter">
       <input type="hidden" name="candidate_id" value={props.candidateId} />
       <input type="hidden" name="email_id" value={props.emailId} />
-      <div className="composer-row">
+      <div className="letter-row">
         <span className="k">To</span>
-        {props.to ?? <span style={{ color: 'var(--bad)' }}>No email address. Add one under Personal details.</span>}
+        {props.to ?? <span style={{ color: 'var(--bad)' }}>No address on file. Add one under Personal details.</span>}
       </div>
-      <div className="composer-row">
+      <div className="letter-row">
         <span className="k">From</span>
-        <span className="muted">{props.from} · replies to {props.replyTo}</span>
+        <span className="faint">{props.from}, replies to {props.replyTo}</span>
       </div>
-      <div className="composer-row">
+      <div className="letter-row">
         <label className="k" htmlFor="subject">Subject</label>
         <input id="subject" name="subject" className="input" type="text" defaultValue={props.subject} required />
       </div>
-      <div className="composer-body">
+      <div className="letter-body">
         <textarea id="body" name="body" className="textarea" aria-label="Email body" defaultValue={props.body} required />
       </div>
-      {(props.lastError && !sendState.ok && !sendState.error) || notice.ok || notice.error ? (
-        <div style={{ padding: '0 18px 14px' }}>
-          {props.lastError && !sendState.ok && !sendState.error && !saveState.ok ? (
-            <div className="alert alert-bad"><Icon name="alert" />Last send attempt failed: {props.lastError}</div>
-          ) : (
-            <Status s={notice} />
-          )}
+      {(showLastError || notice.ok || notice.error) && (
+        <div className="letter-notice">
+          {showLastError ? <p className="note note-bad">The last send failed: {props.lastError}</p> : <Status s={notice} />}
         </div>
-      ) : null}
-      <div className="card-foot">
+      )}
+      <div className="letter-foot">
         <span className="hint">Sending saves your edits first. One click sends exactly one email.</span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" formAction={saveAction} disabled={busy}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-quiet" formAction={saveAction} disabled={busy}>
             {saving && <span className="spinner" />}
-            {saving ? 'Saving…' : 'Save draft'}
+            {saving ? 'Saving' : 'Save draft'}
           </button>
           <button className="btn btn-primary" formAction={send} disabled={busy || !props.to || !!sendState.ok}>
-            {sending ? <span className="spinner" /> : <Icon name="send" />}
-            {sending ? 'Sending…' : sendState.ok ? 'Sent' : 'Send email'}
+            {sending && <span className="spinner" style={{ borderTopColor: 'var(--paper)' }} />}
+            {sending ? 'Sending' : sendState.ok ? 'Sent' : 'Send email'}
           </button>
         </div>
       </div>

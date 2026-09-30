@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth'
 import { dashboard } from '@/lib/queries'
 import { ROLE_LABEL, otherRole, type Role } from '@/lib/types'
 import { Shell } from './nav'
-import { Avatar, Icon, LinePill, PageHeader, Pill, ScoreBar, fmtShortDate } from './ui'
+import { LineMark, Mark, ScoreBar, fmtShortDate } from './ui'
 import { UploadPanel } from './upload-panel'
 
 export const dynamic = 'force-dynamic'
@@ -14,133 +14,97 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { rows, settings } = await dashboard(rankBy)
   const line = (r: Role) => (r === 'pm' ? settings.pm_threshold : settings.spm_threshold)
 
-  const scored = rows.filter((r) => r.appliedAbove !== null)
-  const above = scored.filter((r) => r.appliedAbove).length
+  const above = rows.filter((r) => r.appliedAbove).length
   const crossFit = rows.filter((r) => r.otherRoleFlag).length
   const sent = rows.filter((r) => r.email?.status === 'sent').length
   const drafts = rows.filter((r) => r.email?.status === 'draft').length
-  const attention = rows.filter((r) => r.status !== 'ready').length
 
   return (
     <Shell>
-      <PageHeader
-        title="Candidates"
-        subtitle={`Every CV scored against the PM and SPM rubrics. Lines: PM ${settings.pm_threshold} · SPM ${settings.spm_threshold}.`}
-      />
-
-      <section className="tiles" aria-label="Summary">
-        <div className="card tile">
-          <div className="tile-label"><Icon name="users" size={15} />Candidates</div>
-          <div className="tile-value">{rows.length}</div>
-          <div className="tile-sub">{attention ? `${attention} processing or need attention` : 'All processed'}</div>
+      <div className="head">
+        <div>
+          <h1>Candidates</h1>
+          <p className="lede">
+            Every CV is scored against both rubrics. The line is {settings.pm_threshold} for PM and {settings.spm_threshold} for SPM.
+          </p>
         </div>
-        <div className="card tile">
-          <div className="tile-label"><Icon name="arrowUp" size={15} />Above the line</div>
-          <div className="tile-value">{above}</div>
-          <div className="tile-sub">{scored.length ? `${Math.round((above / scored.length) * 100)}% of scored, for the role applied` : 'For the role applied'}</div>
+        <div className="summary" aria-label="Summary">
+          <div><b>{rows.length}</b><span>on file</span></div>
+          <div><b>{above}</b><span>above the line</span></div>
+          <div><b>{crossFit}</b><span>fit the other role</span></div>
+          <div><b>{sent}</b><span>emailed · {drafts} to send</span></div>
         </div>
-        <div className="card tile">
-          <div className="tile-label"><Icon name="swap" size={15} />Fit the other role</div>
-          <div className="tile-value">{crossFit}</div>
-          <div className="tile-sub">Clear the line for the role they didn't apply for</div>
-        </div>
-        <div className="card tile">
-          <div className="tile-label"><Icon name="mail" size={15} />Emails sent</div>
-          <div className="tile-value">{sent}</div>
-          <div className="tile-sub">{drafts} draft{drafts === 1 ? '' : 's'} ready to send</div>
-        </div>
-      </section>
-
-      <div className="stack">
-        <UploadPanel />
-
-        <section className="card">
-          <div className="card-head">
-            <div>
-              <h2>Ranking</h2>
-              <p>
-                Ranked by {ROLE_LABEL[rankBy]} score · the marker on each bar is that role&apos;s line · top {settings.top_n} per role get an interview brief
-              </p>
-            </div>
-            <nav className="segmented" aria-label="Rank by">
-              <Link href="/?rank=pm" className={rankBy === 'pm' ? 'on' : ''} aria-current={rankBy === 'pm' ? 'true' : undefined}>
-                PM ranking
-              </Link>
-              <Link href="/?rank=spm" className={rankBy === 'spm' ? 'on' : ''} aria-current={rankBy === 'spm' ? 'true' : undefined}>
-                SPM ranking
-              </Link>
-            </nav>
-          </div>
-
-          {rows.length === 0 ? (
-            <div className="empty">
-              <Icon name="file" size={36} />
-              <strong>No candidates yet</strong>
-              Upload CVs above. Each one is scored, briefed and drafted automatically.
-            </div>
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Candidate</th>
-                    <th>PM score</th>
-                    <th>SPM score</th>
-                    <th>Decision</th>
-                    <th>Email</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id}>
-                      <td className={`rank ${r.rank !== null && r.rank <= settings.top_n ? 'top' : ''}`}>{r.rank ?? '–'}</td>
-                      <td>
-                        <div className="cand">
-                          <Avatar name={r.name} size={34} />
-                          <div>
-                            <Link href={`/candidates/${r.id}`} className="row-link">
-                              {r.name || 'Unnamed candidate'}
-                            </Link>
-                            <div className="cand-meta">
-                              Applied {ROLE_LABEL[r.role_applied]} · {fmtShortDate(r.created_at)}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td><ScoreBar value={r.pm?.total ?? null} line={line('pm')} label="PM" /></td>
-                      <td><ScoreBar value={r.spm?.total ?? null} line={line('spm')} label="SPM" /></td>
-                      <td>
-                        <div className="cell-pills">
-                          {r.status === 'processing' && (
-                            <Pill tone="info"><span className="spinner" style={{ width: 10, height: 10 }} />Scoring</Pill>
-                          )}
-                          {r.status === 'error' && <Pill tone="bad" icon="alert" title={r.error_message ?? ''}>Needs attention</Pill>}
-                          {r.appliedAbove !== null && <LinePill above={r.appliedAbove} />}
-                          {r.otherRoleFlag && (
-                            <Pill tone="warn" icon="swap" title={`Scores above the ${ROLE_LABEL[otherRole(r.role_applied)]} line`}>
-                              Fits {ROLE_LABEL[otherRole(r.role_applied)]}
-                            </Pill>
-                          )}
-                        </div>
-                      </td>
-                      <td className="cell-nowrap">
-                        {!r.email ? (
-                          <span className="muted">–</span>
-                        ) : r.email.status === 'sent' ? (
-                          <Pill tone="good" icon="check">Sent</Pill>
-                        ) : (
-                          <Pill tone="neutral" icon="mail">{r.email.type === 'invite' ? 'Invite draft' : 'Rejection draft'}</Pill>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
       </div>
+
+      <UploadPanel />
+
+      <div className="section-title">
+        <h2>Ranking</h2>
+        <nav className="tabs" aria-label="Rank by">
+          <Link href="/?rank=pm" className={rankBy === 'pm' ? 'on' : ''} aria-current={rankBy === 'pm' ? 'true' : undefined}>
+            By PM score
+          </Link>
+          <Link href="/?rank=spm" className={rankBy === 'spm' ? 'on' : ''} aria-current={rankBy === 'spm' ? 'true' : undefined}>
+            By SPM score
+          </Link>
+        </nav>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="empty" style={{ borderTop: '1px solid var(--ink)' }}>
+          <strong>Nothing on file yet</strong>
+          Add CVs above; each one is scored, briefed and drafted automatically.
+        </div>
+      ) : (
+        <div className="ledger-wrap">
+          <table className="ledger">
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>Candidate</th>
+                <th>PM</th>
+                <th>SPM</th>
+                <th>Decision</th>
+                <th>Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td className={`rank ${r.rank === null ? 'dim' : ''}`}>{r.rank ?? '–'}</td>
+                  <td>
+                    <Link href={`/candidates/${r.id}`} className="who">{r.name || 'Unnamed candidate'}</Link>
+                    {r.rank !== null && r.rank <= settings.top_n && <span className="brief-flag">brief</span>}
+                    <div className="who-meta">{ROLE_LABEL[r.role_applied]} · {fmtShortDate(r.created_at)}</div>
+                  </td>
+                  <td><ScoreBar value={r.pm?.total ?? null} line={line('pm')} label="PM" /></td>
+                  <td><ScoreBar value={r.spm?.total ?? null} line={line('spm')} label="SPM" /></td>
+                  <td>
+                    <div className="marks-stack">
+                      {r.status === 'processing' && <Mark tone="accent">Scoring…</Mark>}
+                      {r.status === 'error' && <Mark tone="bad" title={r.error_message ?? ''}>Needs attention</Mark>}
+                      {r.appliedAbove !== null && <LineMark above={r.appliedAbove} />}
+                      {r.otherRoleFlag && <Mark tone="accent">Fits {ROLE_LABEL[otherRole(r.role_applied)]} too</Mark>}
+                    </div>
+                  </td>
+                  <td className="nowrap">
+                    {!r.email ? (
+                      <span className="faint">—</span>
+                    ) : r.email.status === 'sent' ? (
+                      <Mark tone="good">Sent</Mark>
+                    ) : (
+                      <span className="faint">{r.email.type === 'invite' ? 'Invite drafted' : 'Rejection drafted'}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="faint" style={{ fontSize: 13, marginTop: 12 }}>
+        The rust tick on each rule marks that role&apos;s line. The top {settings.top_n} in each ranking get an interview brief.
+      </p>
     </Shell>
   )
 }

@@ -1,7 +1,6 @@
 import { requireAuth } from '@/lib/auth'
 import { loadSettings, q } from '@/lib/db'
 import { Shell } from '@/app/nav'
-import { PageHeader, Pill } from '@/app/ui'
 import { SettingsForm } from './form'
 
 export const dynamic = 'force-dynamic'
@@ -15,13 +14,13 @@ export default async function SettingsPage() {
   ])
   return (
     <Shell>
-      <PageHeader
-        title="Settings"
-        subtitle="Decision lines, interview briefs and how emails are sent."
-        actions={rubrics.map((r) => (
-          <Pill key={r.role} tone="info">{r.role.toUpperCase()} rubric v{r.version}</Pill>
-        ))}
-      />
+      <div className="head" style={{ borderBottom: 0, marginBottom: 8 }}>
+        <div>
+          <h1>Settings</h1>
+          <p className="lede">Where the line sits, who gets a brief, and how emails go out.</p>
+        </div>
+        <p className="kicker">{rubrics.map((r) => `${r.role} rubric v${r.version}`).join(' · ')}</p>
+      </div>
       <SettingsForm s={s} fromEmail={process.env.RESEND_FROM_EMAIL || ''} />
     </Shell>
   )

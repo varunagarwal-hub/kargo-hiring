@@ -43,95 +43,75 @@ export function UploadPanel() {
     setBusy(false)
   }
 
-  const done = items.filter((i) => i.state === 'done').length
+  const pick = () => !busy && input.current?.click()
 
   return (
-    <section className="card">
-      <div className="card-head">
-        <div>
-          <h2>Add candidates</h2>
-          <p>PDF or DOCX. Each CV takes about 1–3 minutes: personal details are separated, then it&apos;s scored, briefed and drafted.</p>
+    <section aria-label="Add CVs">
+      <div
+        className={`intake ${drag ? 'drag' : ''} ${busy ? 'busy' : ''}`}
+        onClick={pick}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDrag(true)
+        }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDrag(false)
+          upload(e.dataTransfer.files)
+        }}
+      >
+        <div className="intake-text">
+          <strong>{busy ? 'Reading CVs…' : 'Add CVs'}</strong>
+          <span>Drop PDF or DOCX files here. Each takes a minute or two to score, brief and draft.</span>
         </div>
-        <div className="segmented" role="radiogroup" aria-label="Role applied for">
-          {(['pm', 'spm'] as const).map((r) => (
-            <button
-              key={r}
-              type="button"
-              role="radio"
-              aria-checked={role === r}
-              className={role === r ? 'on' : ''}
-              disabled={busy}
-              onClick={() => setRole(r)}
-            >
-              Applying for {r === 'pm' ? 'PM' : 'SPM'}
-            </button>
-          ))}
+        <div className="intake-side" onClick={(e) => e.stopPropagation()}>
+          <div className="tabs" role="radiogroup" aria-label="Role applied for">
+            {(['pm', 'spm'] as const).map((r) => (
+              <button key={r} type="button" role="radio" aria-checked={role === r} className={role === r ? 'on' : ''} disabled={busy} onClick={() => setRole(r)}>
+                {r === 'pm' ? 'Product Manager' : 'Senior PM'}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="btn btn-primary" onClick={pick} disabled={busy}>
+            {busy ? <span className="spinner" style={{ borderTopColor: 'var(--paper)' }} /> : <Icon name="upload" />}
+            {busy ? 'Working' : 'Choose files'}
+          </button>
         </div>
+        <input
+          ref={input}
+          type="file"
+          accept={ACCEPT}
+          multiple
+          hidden
+          onChange={(e) => {
+            upload(e.target.files)
+            e.target.value = ''
+          }}
+        />
       </div>
-      <div className="card-body">
-        <div
-          className={`dropzone ${drag ? 'drag' : ''} ${busy ? 'busy' : ''}`}
-          role="button"
-          tabIndex={0}
-          aria-disabled={busy}
-          onClick={() => !busy && input.current?.click()}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !busy && input.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault()
-            setDrag(true)
-          }}
-          onDragLeave={() => setDrag(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setDrag(false)
-            upload(e.dataTransfer.files)
-          }}
-        >
-          <span className="dropzone-icon"><Icon name="upload" size={20} /></span>
-          <strong>
-            {busy ? 'Processing CVs…' : <>Drop CVs here or <span className="link">browse</span></>}
-          </strong>
-          <span className="muted small">
-            They&apos;ll be added as {role === 'pm' ? 'Product Manager' : 'Senior Product Manager'} applicants
-          </span>
-          <input
-            ref={input}
-            type="file"
-            accept={ACCEPT}
-            multiple
-            hidden
-            onChange={(e) => {
-              upload(e.target.files)
-              e.target.value = ''
-            }}
-          />
-        </div>
 
-        {items.length > 0 && (
-          <>
-            <ul className="queue" aria-live="polite">
-              {items.map((it, i) => (
-                <li key={i}>
-                  {it.state === 'working' && <span className="spinner" />}
-                  {it.state === 'queued' && <Icon name="clock" className="muted" />}
-                  {it.state === 'done' && <Icon name="checkCircle" className="ok-icon" />}
-                  {it.state === 'error' && <Icon name="alert" className="err-icon" />}
-                  <span className="name">{it.name}</span>
-                  {it.state === 'queued' && <span className="muted small">Queued</span>}
-                  {it.state === 'working' && <span className="muted small">Scoring, briefing, drafting…</span>}
-                  {it.state === 'done' && <a href={`/candidates/${it.id}`} className="small">Open</a>}
-                  {it.state === 'error' && (
-                    <span className="small" style={{ color: 'var(--bad)' }}>
-                      {it.message} {it.id && <a href={`/candidates/${it.id}`}>Open</a>}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {!busy && <p className="muted small" style={{ marginTop: 10 }}>{done} of {items.length} processed.</p>}
-          </>
-        )}
-      </div>
+      {items.length > 0 && (
+        <ul className="queue" aria-live="polite">
+          {items.map((it, i) => (
+            <li key={i}>
+              <span className="name">{it.name}</span>
+              {it.state === 'queued' && <span className="faint">waiting</span>}
+              {it.state === 'working' && (
+                <span className="faint" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span className="spinner" />scoring, briefing, drafting
+                </span>
+              )}
+              {it.state === 'done' && <a href={`/candidates/${it.id}`}>Open file</a>}
+              {it.state === 'error' && (
+                <span style={{ color: 'var(--bad)' }}>
+                  {it.message} {it.id && <a href={`/candidates/${it.id}`}>Open</a>}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }
