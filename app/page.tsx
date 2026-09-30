@@ -18,6 +18,15 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const crossFit = rows.filter((r) => r.otherRoleFlag).length
   const sent = rows.filter((r) => r.email?.status === 'sent').length
   const drafts = rows.filter((r) => r.email?.status === 'draft').length
+  const pmCount = rows.filter((r) => r.role_applied === 'pm').length
+  const scored = rows.filter((r) => r.appliedAbove !== null).length
+
+  const cells = [
+    { label: 'On file', value: rows.length, note: `${pmCount} PM · ${rows.length - pmCount} SPM` },
+    { label: 'Above the line', value: above, note: scored ? `${Math.round((above / scored) * 100)}% of scored CVs` : 'for the role applied' },
+    { label: 'Fits other role', value: crossFit, note: 'worth a second look' },
+    { label: 'Emails sent', value: sent, note: drafts ? `${drafts} draft${drafts === 1 ? '' : 's'} ready` : 'none waiting' },
+  ]
 
   return (
     <Shell>
@@ -28,13 +37,19 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             Every CV is scored against both rubrics. The line is {settings.pm_threshold} for PM and {settings.spm_threshold} for SPM.
           </p>
         </div>
-        <div className="summary" aria-label="Summary">
-          <div><b>{rows.length}</b><span>on file</span></div>
-          <div><b>{above}</b><span>above the line</span></div>
-          <div><b>{crossFit}</b><span>fit the other role</span></div>
-          <div><b>{sent}</b><span>emailed · {drafts} to send</span></div>
-        </div>
       </div>
+
+      <dl className="summary" aria-label="Summary">
+        {cells.map((c) => (
+          <div key={c.label}>
+            <dt>{c.label}</dt>
+            <dd>
+              <b>{c.value}</b>
+              <span>{c.note}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
 
       <UploadPanel />
 
