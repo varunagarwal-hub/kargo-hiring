@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { requireAuth } from '@/lib/auth'
 import { loadSettings, one, q } from '@/lib/db'
 import { NAME_TOKEN } from '@/lib/pii/redact'
-import { ROLES, ROLE_LABEL, otherRole, type Pii, type Role } from '@/lib/types'
+import { ROLES, ROLE_LABEL, type Pii, type Role } from '@/lib/types'
 import { Shell } from '@/app/nav'
 import { Icon, LineMark, ScoreBar, ScoreMarks, fmtDate, fmtDateTime } from '@/app/ui'
 import { EmailEditor, PiiForm, RescoreButton } from './forms'
@@ -50,7 +50,11 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
   const email = sent ?? draft
   const line = (r: Role) => (r === 'pm' ? settings.pm_threshold : settings.spm_threshold)
   const display = (t: string) => t.replaceAll(NAME_TOKEN, pii.name?.split(/\s+/)[0] || 'the candidate')
-  const other = totals.find((t) => t.role === otherRole(c.role_applied))
+  // SPM above the line already implies PM above the line (enforced in the database).
+  const above = (r: Role) => !!totals.find((t) => t.role === r)?.above_line
+  const bestFit: Role | null = above('spm') ? 'spm' : above('pm') ? 'pm' : null
+  const scored = totals.length > 0
+  const crossFit = bestFit !== null && bestFit !== c.role_applied
   const from = `${settings.sender_name} <${process.env.RESEND_FROM_EMAIL || 'not set'}>`
 
   return (
@@ -65,6 +69,11 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
             <span>Received {fmtDate(c.created_at)}</span>
             {pii.email && <span>{pii.email}</span>}
           </div>
+          {scored && (
+            <p className="best-fit">
+              Best fit: <strong>{bestFit ? ROLE_TITLE[bestFit] : 'neither role yet'}</strong>
+            </p>
+          )}
         </div>
         <div className="dossier-actions">
           {c.cv_file_name && (
@@ -76,7 +85,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
         </div>
       </header>
 
-      {(c.status !== 'ready' || other?.above_line) && (
+      {(c.status !== 'ready' || crossFit) && (
         <div className="notes">
           {c.status === 'processing' && (
             <p className="note note-accent"><span className="spinner" style={{ marginRight: 8, verticalAlign: -1 }} />Scoring in progress. Refresh in a minute.</p>
@@ -84,9 +93,13 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
           {c.status === 'error' && (
             <p className="note note-bad">{needsName || !pii.name ? <strong>Waiting for you to confirm the name.</strong> : <strong>Processing failed.</strong>} {c.error_message}</p>
           )}
-          {other?.above_line && (
+          {crossFit && (
             <p className="note note-accent">
-              <strong>Also clears the {ROLE_LABEL[other.role]} line</strong> ({Number(other.total).toFixed(1)} against {line(other.role)}). Worth considering for {ROLE_TITLE[other.role]}.
+              {bestFit === 'spm' ? (
+                <><strong>Also clears the Senior PM line.</strong> Worth considering for Senior Product Manager.</>
+              ) : (
+                <><strong>Clears the PM line but not the Senior PM line.</strong> Worth considering for Product Manager instead.</>
+              )}
             </p>
           )}
         </div>
@@ -110,6 +123,12 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
                   </div>
                   <div className="total-rule"><ScoreBar value={Number(t.total)} line={line(role)} label={ROLE_LABEL[role]} showValue={false} /></div>
                   <div style={{ marginTop: 12 }}><LineMark above={t.above_line} /></div>
+                  {(() => {
+                    const weighted = Math.round((t.scores ?? []).reduce((sum, x) => sum + (x.score / 3) * x.criteria.weight, 0) * 10) / 10
+                    return role === 'spm' && weighted > Number(t.total) + 0.05 ? (
+                      <p className="gated" style={{ marginTop: 8 }}>Weighted SPM score {weighted.toFixed(1)}, held to the PM total: a candidate can&apos;t be a stronger fit for Senior PM than for PM.</p>
+                    ) : null
+                  })()}
 
                   <ol className="criteria">
                     {[...(t.scores ?? [])]

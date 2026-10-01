@@ -4,25 +4,26 @@ import type { PiiGuard } from '@/lib/pii/redact'
 import type { CriterionScore, Rubric } from '@/lib/types'
 
 export const SYSTEM_PROMPT = `You are an experienced hiring manager at Kargo, a logistics software company, reading CVs against a fixed rubric.
-Read each CV the way a fair, generous senior manager would: look for the behaviour each criterion describes, not for the exact wording or industry of the rubric's examples.
+Read each CV the way a fair, experienced senior manager would: look for the behaviour each criterion describes, not for the exact wording or industry of the rubric's examples, and give credit only for concrete episodes.
 Rules:
 - The rubric was written from logistics hires, but the behaviours are general. Credit equivalent evidence from any industry (SaaS, banking, consulting, e-commerce, government and so on). The "HOW TO READ" notes list equivalents.
 - Use what the CV says or clearly implies. A reasonable reading is fine; do not invent facts the CV does not support.
 - Judge each criterion on its own. A gap in one criterion must not lower the score of another.
-- When torn between two scores, choose the higher one.
+- When torn between two scores, pick the one the evidence most clearly supports.
+- Responsibilities, skills lists and self-descriptions ("strong in stakeholder management", "managed client relationships") are not episodes: they earn at most 1.
 - The "source lines from past hires" are calibration examples from other people. They are not part of this CV.
 - Personal details in the CV were replaced with tokens such as [CANDIDATE], [EMAIL], [PHONE], [URL], [ADDRESS]. Ignore them.
 - Scores are integers 0, 1, 2 or 3.
 - "reason" is ONE line (max ~35 words). For 1-3, quote or closely paraphrase the CV line you relied on, then say briefly why. For 0, say in a few words what is missing.
 - Reply with JSON only.`
 
-/** How to apply the rubric leniently and across industries. Shown to the model with every rubric. */
+/** How to apply the rubric fairly across industries. Shown to the model with every rubric. */
 export const READING_GUIDE = `HOW TO READ THIS RUBRIC (applies to every criterion):
 Scores:
 - 0 = nothing in the CV relates to this behaviour at all.
-- 1 = the behaviour shows up in some form, even if partial, adjacent, or missing who/what/result.
-- 2 = the behaviour is clearly demonstrated at least once. One detail (the exact organisation name, the precise result, the duration) may be implied rather than spelled out.
-- 3 = clearly demonstrated more than once, in different contexts.
+- 1 = the behaviour appears but is partial, adjacent, a responsibility rather than an episode, or missing the who, the what or the result.
+- 2 = a concrete episode clearly demonstrates the behaviour, with the who, the what and the result present. At most one minor detail (such as the exact duration) may be implied.
+- 3 = as for 2, more than once, in different contexts.
 Equivalent evidence by criterion:
 1. Got a yes from someone they couldn't instruct: winning agreement from anyone outside their reporting line: enterprise clients (pilots, contracts, renewals, scope or price changes, CXO sign-off), regulators or government bodies (RBI, SEBI, ministries, customs, approvals), partners and integrations, investors, carriers or vendors they had to persuade or negotiate with.
 2. Stayed the named contact until closure: being the point of contact through a long-running effort to a clear end: client implementations, rollouts, migrations, launches, escalations, audits or onboarding, owned over weeks or months to go-live, sign-off or resolution.
@@ -72,8 +73,8 @@ export function rubricPrompt(rubric: Rubric, pmRubric?: Rubric): string {
   const lines = [`RUBRIC: ${title}, version ${rubric.version}`, `SCORING GUIDE (all criteria):\n${rubric.scoring_guide}`, READING_GUIDE]
   if (rubric.role === 'spm') {
     lines.push(
-      'SPM RULE: each SPM criterion is the PM behaviour plus an extra bar (shown below). Read it with the same lenient guide: ' +
-        'give 2 when the PM behaviour is clearly there and the extra bar is at least partly met, 3 when both are clearly met more than once.',
+      'SPM RULE: each SPM criterion is the PM behaviour plus an extra bar (shown below). An SPM score can never be higher than the PM score for the same criterion. ' +
+        'Give 2 only when the PM behaviour is clearly shown AND the extra SPM bar is met; give 3 when both are met more than once. If the extra bar is not met, follow the SPM weak forms (usually 1).',
     )
   }
   for (const c of rubric.criteria) {
@@ -174,8 +175,12 @@ export async function scoreBoth(
   ])
   const pmScores = ungated(pmRaw)
   const spmScores = applySpmGate(spmRaw, new Map(pmScores.map((s) => [s.position, s.score])))
+  const pmTotal = computeTotal(opts.pm, pmScores)
+  // Not fit for PM means not fit for SPM: the SPM total never exceeds the PM total.
+  // (Without this, SPM's heavier weight on criterion 2 could lift it above PM.)
+  const spmWeighted = computeTotal(opts.spm, spmScores)
   return {
-    pm: { scores: pmScores, total: computeTotal(opts.pm, pmScores) },
-    spm: { scores: spmScores, total: computeTotal(opts.spm, spmScores) },
+    pm: { scores: pmScores, total: pmTotal },
+    spm: { scores: spmScores, total: Math.min(spmWeighted, pmTotal), weighted: spmWeighted },
   }
 }

@@ -140,7 +140,7 @@ describe('scoring', () => {
     const cfg: AiConfig = { apiKey: 't', model: 'm', audit: () => {} }
     const r = await scoreBoth(cfg, { candidateId: null, redactedCv: '[CANDIDATE]', pm, spm, guard: buildPiiGuard(detectPii(SAMPLE_CV)) })
     expect(r.spm.scores.map((s) => s.score)).toEqual([2, 1, 0, 3])
-    expect(r.spm.total).toBe(computeTotal(spm, r.spm.scores))
+    expect(r.spm.total).toBe(Math.min(computeTotal(spm, r.spm.scores), r.pm.total))
   })
 })
 
@@ -157,5 +157,17 @@ describe('brief focus', () => {
     // All perfect: still two different criteria.
     const all = pickBriefFocus(spm, s([3, 3, 3, 3], spm))
     expect(all.strongest.position).not.toBe(all.weakest.position)
+  })
+})
+
+describe('PM before SPM', () => {
+  it('caps the SPM total at the PM total even when SPM weights would lift it', async () => {
+    // Only criterion 2 scores: PM weight 27, SPM weight 35 -> SPM would be 11.7 vs PM 9.0.
+    fakeGemini({ pmScores: [0, 1, 0, 0], spmScores: [0, 1, 0, 0] })
+    const cfg: AiConfig = { apiKey: 't', model: 'm', audit: () => {} }
+    const r = await scoreBoth(cfg, { candidateId: null, redactedCv: '[CANDIDATE]', pm, spm, guard: buildPiiGuard(detectPii(SAMPLE_CV)) })
+    expect(r.pm.total).toBe(9)
+    expect(r.spm.weighted).toBe(11.7)
+    expect(r.spm.total).toBe(9)
   })
 })

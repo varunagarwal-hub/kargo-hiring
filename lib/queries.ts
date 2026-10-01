@@ -15,11 +15,13 @@ export type DashboardRow = {
   rank: number | null
   appliedAbove: boolean | null
   otherRoleFlag: boolean
+  /** Highest role whose line they clear (SPM requires PM), or null. */
+  bestFit: Role | null
 }
 
 export async function dashboard(rankBy: Role) {
   const [cands, pii, tot, mail, settings] = await Promise.all([
-    q<Omit<DashboardRow, 'name' | 'pm' | 'spm' | 'email' | 'rank' | 'appliedAbove' | 'otherRoleFlag'>>(
+    q<Omit<DashboardRow, 'name' | 'pm' | 'spm' | 'email' | 'rank' | 'appliedAbove' | 'otherRoleFlag' | 'bestFit'>>(
       `select id, role_applied, status, error_message, created_at from candidates`,
     ),
     q<{ candidate_id: string; name: string | null }>(`select candidate_id, name from candidate_pii`),
@@ -41,7 +43,8 @@ export async function dashboard(rankBy: Role) {
     const pm = t('pm')
     const spm = t('spm')
     const applied = c.role_applied === 'pm' ? pm : spm
-    const other = c.role_applied === 'pm' ? spm : pm
+    // SPM above the line already implies PM above the line (enforced in the database).
+    const bestFit: Role | null = spm?.above_line ? 'spm' : pm?.above_line ? 'pm' : null
     return {
       ...c,
       name: names.get(c.id) ?? null,
@@ -50,7 +53,9 @@ export async function dashboard(rankBy: Role) {
       email: e,
       rank: null,
       appliedAbove: applied ? applied.above_line : null,
-      otherRoleFlag: !!other?.above_line,
+      bestFit,
+      // Worth a look for the other role: a PM applicant who clears SPM, or an SPM applicant who only clears PM.
+      otherRoleFlag: bestFit !== null && bestFit !== c.role_applied,
     }
   })
 

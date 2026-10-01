@@ -100,3 +100,22 @@ describe('0002 name status', () => {
     await expect(pg.query(`update candidate_pii set name_status = 'maybe' where candidate_id = $1`, [c.rows[0].id])).rejects.toThrow()
   })
 })
+
+describe('0003 SPM requires PM', () => {
+  it('an SPM total above the SPM line is still below the line if the PM total is below the PM line', async () => {
+    const pm = await loadRubric(pg, 'pm')
+    const spm = await loadRubric(pg, 'spm')
+    await pg.exec(`update settings set pm_threshold = 60, spm_threshold = 40`)
+    const c = await pg.query<{ id: string }>(`insert into candidates (role_applied) values ('spm') returning id`)
+    const id = c.rows[0].id
+    const s = (r: typeof pm) => JSON.stringify(r.criteria.map((cr) => ({ criterion_id: cr.id, score: 1, model_score: 1, gated: false, reason: 'r' })))
+    await pg.query(`select record_scoring($1, 'pm', $2, 50, 'm', $3::jsonb)`, [id, pm.id, s(pm)])
+    await pg.query(`select record_scoring($1, 'spm', $2, 45, 'm', $3::jsonb)`, [id, spm.id, s(spm)])
+    const line = async () =>
+      Object.fromEntries((await pg.query<{ role: string; above_line: boolean }>(`select role, above_line from totals where candidate_id = $1 and is_current`, [id])).rows.map((r) => [r.role, r.above_line]))
+    expect(await line()).toEqual({ pm: false, spm: false }) // 45 >= 40 but PM 50 < 60
+    await pg.exec(`update settings set pm_threshold = 50; select recompute_lines();`)
+    expect(await line()).toEqual({ pm: true, spm: true })
+    await pg.exec(`update settings set pm_threshold = 60, spm_threshold = 60; select recompute_lines();`)
+  })
+})

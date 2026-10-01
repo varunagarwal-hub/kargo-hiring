@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { requireAuth } from '@/lib/auth'
 import { dashboard } from '@/lib/queries'
-import { ROLE_LABEL, otherRole, type Role } from '@/lib/types'
+import { ROLE_LABEL, type Role } from '@/lib/types'
 import { Shell } from './nav'
 import { LineMark, Mark, ScoreBar, fmtShortDate } from './ui'
 import { UploadPanel } from './upload-panel'
@@ -103,7 +103,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                         </Mark>
                       )}
                       {r.appliedAbove !== null && <LineMark above={r.appliedAbove} />}
-                      {r.otherRoleFlag && <Mark tone="accent">Fits {ROLE_LABEL[otherRole(r.role_applied)]} too</Mark>}
+                      {r.otherRoleFlag && <Mark tone="accent">{r.bestFit === 'spm' ? 'Also fits Senior PM' : 'Fits PM instead'}</Mark>}
                     </div>
                   </td>
                   <td className="nowrap">

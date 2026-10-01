@@ -91,7 +91,7 @@ export const SAMPLES: { file: string; role: 'pm' | 'spm'; lines: string[] }[] = 
   },
 ]
 
-async function pdf(lines: string[]): Promise<Uint8Array> {
+export async function pdf(lines: string[]): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const bold = await doc.embedFont(StandardFonts.HelveticaBold)
@@ -125,7 +125,7 @@ async function pdf(lines: string[]): Promise<Uint8Array> {
   return doc.save()
 }
 
-async function docx(lines: string[]): Promise<Buffer> {
+export async function docx(lines: string[]): Promise<Buffer> {
   const doc = new Document({
     sections: [{ children: lines.map((l, i) => new Paragraph({ children: [new TextRun({ text: l, bold: i === 0, size: i === 0 ? 32 : 20 })] })) }],
   })
