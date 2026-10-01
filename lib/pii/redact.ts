@@ -1,5 +1,6 @@
 import type { Pii } from '@/lib/types'
-import { digitsOf } from './detect'
+import { normalizeCvText } from '@/lib/extract'
+import { digitsOf, fileNameHints, phoneBlobs } from './detect'
 
 export const NAME_TOKEN = '[CANDIDATE]'
 
@@ -54,7 +55,7 @@ function emailHandle(email: string | null): string | null {
  * detected address and personal URLs, then every occurrence of the name.
  */
 export function redactCv(raw: string, pii: Pii): string {
-  let t = raw
+  let t = normalizeCvText(raw)
   t = t.replace(ALL_EMAILS, '[EMAIL]')
   t = t.replace(PROFILE_URLS, '[URL]')
   for (const u of [pii.linkedin_url, pii.github_url, ...pii.other_urls]) {
@@ -64,6 +65,7 @@ export function redactCv(raw: string, pii: Pii): string {
     const re = phoneRegex(pii.phone)
     if (re) t = t.replace(re, '[PHONE]')
   }
+  for (const blob of phoneBlobs(t)) t = t.replace(blob, '[PHONE]') // incl. numbers a template printed twice
   t = t.replace(ALL_PHONES, (m) => (digitsOf(m).length >= 10 && digitsOf(m).length <= 13 ? '[PHONE]' : m))
   t = t.replace(/\+\d{1,3}[\s.-]*\[PHONE\]/g, '[PHONE]') // leftover country code
   if (pii.address) t = t.replace(new RegExp(esc(pii.address), 'gi'), '[ADDRESS]')
@@ -94,8 +96,12 @@ export class PiiLeakError extends Error {
  *  - candidate-derived text must not contain any single name part or email handle.
  * (Single name parts are only checked in candidate text because the fixed rubric
  * quotes past hires by first name, e.g. "Meghna", which is not this candidate.)
+ *
+ * Independent of what was detected, candidate text must also not contain a name
+ * from the CV file name ("07_anita_desai.pdf") or any phone-like number. This
+ * catches the case where name detection picked the wrong words.
  */
-export function buildPiiGuard(pii: Pii) {
+export function buildPiiGuard(pii: Pii, opts: { fileName?: string | null } = {}) {
   const parts = nameParts(pii.name)
   const whole: { label: string; test: (s: string) => boolean }[] = []
   const candidateOnly: typeof whole = []
@@ -121,6 +127,10 @@ export function buildPiiGuard(pii: Pii) {
     if (u) whole.push({ label: 'url', test: (s) => s.toLowerCase().includes(u.toLowerCase()) })
   }
   if (pii.address) whole.push({ label: 'address', test: (s) => s.toLowerCase().includes(pii.address!.toLowerCase()) })
+  for (const h of fileNameHints(opts.fileName).filter((t) => t.length >= 3)) {
+    candidateOnly.push({ label: 'name from file name', test: (s) => bounded(esc(h)).test(s) })
+  }
+  candidateOnly.push({ label: 'phone-like number', test: (s) => phoneBlobs(s).length > 0 })
 
   return {
     findLeaks(payload: string, candidateText: string[]): string[] {

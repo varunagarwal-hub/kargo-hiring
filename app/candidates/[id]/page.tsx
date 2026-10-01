@@ -26,7 +26,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
       `select * from candidates where id = $1`,
       [id],
     ),
-    one<Pii>(`select name, email, phone, linkedin_url, github_url, other_urls, address from candidate_pii where candidate_id = $1`, [id]),
+    one<Pii & { name_status: string }>(`select name, email, phone, linkedin_url, github_url, other_urls, address, name_status from candidate_pii where candidate_id = $1`, [id]),
     q<TotalRow>(
       `select t.id, t.role, t.total, t.above_line, t.model, t.created_at,
               json_build_object('version', r.version) as rubrics,
@@ -43,7 +43,8 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
     loadSettings(),
   ])
   if (!c) notFound()
-  const pii = piiRow ?? { name: null, email: null, phone: null, linkedin_url: null, github_url: null, other_urls: [], address: null }
+  const pii = piiRow ?? { name: null, email: null, phone: null, linkedin_url: null, github_url: null, other_urls: [], address: null, name_status: 'unconfirmed' }
+  const needsName = c.status === 'error' && pii.name_status === 'unconfirmed'
   const sent = emails.find((e) => e.status !== 'draft')
   const draft = emails.find((e) => e.status === 'draft')
   const email = sent ?? draft
@@ -81,7 +82,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
             <p className="note note-accent"><span className="spinner" style={{ marginRight: 8, verticalAlign: -1 }} />Scoring in progress. Refresh in a minute.</p>
           )}
           {c.status === 'error' && (
-            <p className="note note-bad"><strong>Processing failed.</strong> {c.error_message} Fix the personal details below if needed, then re-score.</p>
+            <p className="note note-bad">{needsName || !pii.name ? <strong>Waiting for you to confirm the name.</strong> : <strong>Processing failed.</strong>} {c.error_message}</p>
           )}
           {other?.above_line && (
             <p className="note note-accent">
@@ -186,7 +187,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
       )}
 
       <div style={{ marginTop: 48 }}>
-        <details className="fold">
+        <details className="fold" open={needsName || !pii.name}>
           <summary>
             <h2>Personal details</h2>
             <span className="faint">Kept apart from the CV text and never sent to the AI</span>

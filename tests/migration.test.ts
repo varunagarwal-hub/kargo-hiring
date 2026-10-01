@@ -90,3 +90,13 @@ describe('rubric change template', () => {
     expect(pm.criteria.reduce((a, c) => a + c.weight, 0)).toBe(100)
   })
 })
+
+describe('0002 name status', () => {
+  it('adds name_status, defaulting to unconfirmed, and rejects other values', async () => {
+    const c = await pg.query<{ id: string }>(`insert into candidates (role_applied) values ('pm') returning id`)
+    await pg.query(`insert into candidate_pii (candidate_id, raw_cv_text) values ($1, 'x')`, [c.rows[0].id])
+    const r = await pg.query<{ name_status: string }>(`select name_status from candidate_pii where candidate_id = $1`, [c.rows[0].id])
+    expect(r.rows[0].name_status).toBe('unconfirmed')
+    await expect(pg.query(`update candidate_pii set name_status = 'maybe' where candidate_id = $1`, [c.rows[0].id])).rejects.toThrow()
+  })
+})

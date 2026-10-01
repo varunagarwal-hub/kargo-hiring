@@ -1,16 +1,17 @@
 // Runs the real migration in an in-process Postgres (PGlite) so tests and the
 // offline test run use the exact rubric the production database is seeded with.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { PGlite } from '@electric-sql/pglite'
 import type { Criterion, Role, Rubric } from '../lib/types'
 
-const MIGRATION = path.resolve(import.meta.dirname, '../db/migrations/0001_init.sql')
+const MIGRATIONS = path.resolve(import.meta.dirname, '../db/migrations')
 
 export async function migratedDb(): Promise<PGlite> {
   const pg = new PGlite()
-  const sql = readFileSync(MIGRATION, 'utf8')
-  await pg.exec(sql)
+  for (const f of readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort()) {
+    await pg.exec(readFileSync(path.join(MIGRATIONS, f), 'utf8'))
+  }
   return pg
 }
 

@@ -19,12 +19,12 @@ function ai(): AiConfig {
   return { apiKey: env.geminiApiKey(), model: env.geminiModel(), audit: dbAudit }
 }
 
-type PiiRow = Pii & { raw_cv_text: string }
-type CandidateRow = { id: string; role_applied: Role; redacted_cv_text: string; status: string }
+type PiiRow = Pii & { raw_cv_text: string; name_status: 'confident' | 'unconfirmed' | 'confirmed' }
+type CandidateRow = { id: string; role_applied: Role; redacted_cv_text: string; status: string; cv_file_name: string | null }
 
 const loadPii = (id: string) => mustOne<PiiRow>(`select * from candidate_pii where candidate_id = $1`, [id], 'personal details')
 const loadCandidate = (id: string) =>
-  mustOne<CandidateRow>(`select id, role_applied, redacted_cv_text, status from candidates where id = $1`, [id], 'candidate')
+  mustOne<CandidateRow>(`select id, role_applied, redacted_cv_text, status, cv_file_name from candidates where id = $1`, [id], 'candidate')
 const setStatus = (id: string, status: string, error: string | null = null) =>
   q(`update candidates set status = $2, error_message = $3, updated_at = now() where id = $1`, [id, status, error])
 
@@ -38,7 +38,7 @@ export async function createCandidate(file: File, role: Role): Promise<string> {
   if (file.size > 4 * 1024 * 1024) throw new Error('File is larger than 4 MB.')
   const buf = Buffer.from(await file.arrayBuffer())
   const raw = await extractText(buf, kind)
-  const pii = detectPii(raw)
+  const pii = detectPii(raw, { fileName: file.name })
   const redacted = redactCv(raw, pii)
 
   // File first, then both rows in one transaction: no row ever points at a missing file.
@@ -55,9 +55,9 @@ export async function createCandidate(file: File, role: Role): Promise<string> {
       [id, role, redacted, key, file.name],
     )
     await query(
-      `insert into candidate_pii (candidate_id, name, email, phone, linkedin_url, github_url, other_urls, address, raw_cv_text)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [id, pii.name, pii.email, pii.phone, pii.linkedin_url, pii.github_url, pii.other_urls, pii.address, raw],
+      `insert into candidate_pii (candidate_id, name, email, phone, linkedin_url, github_url, other_urls, address, raw_cv_text, name_status)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [id, pii.name, pii.email, pii.phone, pii.linkedin_url, pii.github_url, pii.other_urls, pii.address, raw, pii.nameConfidence === 'high' ? 'confident' : 'unconfirmed'],
     )
   })
   return id
@@ -68,7 +68,7 @@ export async function updatePii(candidateId: string, pii: Pii): Promise<{ rescor
   const current = await loadPii(candidateId)
   const redacted = redactCv(current.raw_cv_text, pii)
   await q(
-    `update candidate_pii set name = $2, email = $3, phone = $4, linkedin_url = $5, github_url = $6, other_urls = $7, address = $8, updated_at = now()
+    `update candidate_pii set name = $2, email = $3, phone = $4, linkedin_url = $5, github_url = $6, other_urls = $7, address = $8, name_status = 'confirmed', updated_at = now()
      where candidate_id = $1`,
     [candidateId, pii.name, pii.email, pii.phone, pii.linkedin_url, pii.github_url, pii.other_urls, pii.address],
   )
@@ -88,10 +88,13 @@ export async function processCandidate(candidateId: string, opts: { forceDraft?:
   try {
     const cand = await loadCandidate(candidateId)
     const pii = await loadPii(candidateId)
-    const guard = buildPiiGuard(pii)
+    const guard = buildPiiGuard(pii, { fileName: cand.cv_file_name })
     // Fail closed: without a known name we cannot redact it, so nothing goes to the AI.
     if (!pii.name?.trim()) {
-      throw new Error('No name was detected in this CV. Enter it under Personal details and save; scoring then runs automatically.')
+      throw new Error('No name was found in this CV. Enter it under Personal details and save; scoring then runs automatically.')
+    }
+    if (pii.name_status === 'unconfirmed') {
+      throw new Error(`Please confirm the name. Our best guess is "${pii.name}", but nothing in the CV backs it up. Check it under Personal details and save; scoring then runs automatically.`)
     }
     guard.assertClean('', [cand.redacted_cv_text])
 
@@ -153,7 +156,7 @@ export async function syncBriefs(opts: { force?: string } = {}): Promise<void> {
       const have = existing.find((b) => b.candidate_id === t.candidate_id)
       if (have && have.total_id === t.id && opts.force !== t.candidate_id) continue
       const cand = await loadCandidate(t.candidate_id)
-      const guard = buildPiiGuard(await loadPii(t.candidate_id))
+      const guard = buildPiiGuard(await loadPii(t.candidate_id), { fileName: cand.cv_file_name })
       const rubric = await loadRubricById(t.rubric_id)
       const text = await writeBrief(ai(), {
         candidateId: t.candidate_id,
@@ -204,7 +207,7 @@ export async function ensureDraft(candidateId: string, opts: { force?: boolean }
     type,
     role: cand.role_applied,
     settings,
-    guard: buildPiiGuard(pii),
+    guard: buildPiiGuard(pii, { fileName: cand.cv_file_name }),
   })
   const final = finalizeEmail(generated, firstNameOf(pii.name), settings.signature)
   // Replace only the draft (the status filter protects sent mail), atomically.

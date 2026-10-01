@@ -97,7 +97,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                   <td>
                     <div className="marks-stack">
                       {r.status === 'processing' && <Mark tone="accent">Scoring…</Mark>}
-                      {r.status === 'error' && <Mark tone="bad" title={r.error_message ?? ''}>Needs attention</Mark>}
+                      {r.status === 'error' && (
+                        <Mark tone="bad" title={r.error_message ?? ''}>
+                          {/confirm the name|No name was found/.test(r.error_message ?? '') ? 'Confirm name' : 'Needs attention'}
+                        </Mark>
+                      )}
                       {r.appliedAbove !== null && <LineMark above={r.appliedAbove} />}
                       {r.otherRoleFlag && <Mark tone="accent">Fits {ROLE_LABEL[otherRole(r.role_applied)]} too</Mark>}
                     </div>
