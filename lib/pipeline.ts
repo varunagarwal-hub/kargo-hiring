@@ -109,8 +109,8 @@ export async function processCandidate(candidateId: string, opts: { forceDraft?:
     }
     await setStatus(candidateId, 'ready')
 
-    await syncBriefs({ force: candidateId })
-    await ensureDraft(candidateId, { force: opts.forceDraft ?? true })
+    // Briefs and the email draft are independent: write them in parallel.
+    await Promise.all([syncBriefs({ force: candidateId }), ensureDraft(candidateId, { force: opts.forceDraft ?? true })])
   } catch (e) {
     await setStatus(candidateId, 'error', (e as Error).message)
     throw e
@@ -146,7 +146,7 @@ function scoresFor(totalId: string): Promise<CriterionScore[]> {
 /** Make sure exactly the current top N per role have an up-to-date brief. `force` regenerates one candidate's briefs. */
 export async function syncBriefs(opts: { force?: string } = {}): Promise<void> {
   const settings = await loadSettings()
-  for (const role of ROLES) {
+  await Promise.all(ROLES.map(async (role) => {
     const top = (await rankedTotals(role)).slice(0, settings.top_n)
     const topIds = top.map((t) => t.candidate_id)
     await q(`delete from briefs where role = $1 and not (candidate_id = any($2::uuid[]))`, [role, topIds])
@@ -171,7 +171,7 @@ export async function syncBriefs(opts: { force?: string } = {}): Promise<void> {
         [t.candidate_id, role, t.id, text],
       )
     }
-  }
+  }))
 }
 
 // ---------------------------------------------------------------------------

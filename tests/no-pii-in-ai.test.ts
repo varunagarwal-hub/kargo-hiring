@@ -30,7 +30,7 @@ function fakeGemini(opts: { malformedFirst?: boolean; pmScores?: number[]; spmSc
     if (opts.malformedFirst && n === 1) {
       return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"criteria": [ oops' }] } }] }))
     }
-    if (sys.includes('score CVs')) {
+    if (user.includes('RUBRIC: ')) {
       const isSpm = user.includes('SENIOR PRODUCT MANAGER')
       const s = (isSpm ? opts.spmScores : opts.pmScores) ?? [2, 1, 0, 3]
       reply = {

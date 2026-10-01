@@ -3,15 +3,31 @@ import { generateJson, type AiConfig } from '@/lib/ai/gemini'
 import type { PiiGuard } from '@/lib/pii/redact'
 import type { CriterionScore, Rubric } from '@/lib/types'
 
-export const SYSTEM_PROMPT = `You score CVs for Kargo, a logistics software company, against a fixed hiring rubric.
+export const SYSTEM_PROMPT = `You are an experienced hiring manager at Kargo, a logistics software company, reading CVs against a fixed rubric.
+Read each CV the way a fair, generous senior manager would: look for the behaviour each criterion describes, not for the exact wording or industry of the rubric's examples.
 Rules:
-- Use only what the CV text says. Do not infer, assume or reward anything the CV does not state.
-- Judge each criterion against its "strong" and "weak" descriptions and the 0-3 scoring guide.
+- The rubric was written from logistics hires, but the behaviours are general. Credit equivalent evidence from any industry (SaaS, banking, consulting, e-commerce, government and so on). The "HOW TO READ" notes list equivalents.
+- Use what the CV says or clearly implies. A reasonable reading is fine; do not invent facts the CV does not support.
+- Judge each criterion on its own. A gap in one criterion must not lower the score of another.
+- When torn between two scores, choose the higher one.
 - The "source lines from past hires" are calibration examples from other people. They are not part of this CV.
 - Personal details in the CV were replaced with tokens such as [CANDIDATE], [EMAIL], [PHONE], [URL], [ADDRESS]. Ignore them.
 - Scores are integers 0, 1, 2 or 3.
-- "reason" is ONE line (max ~35 words). If the score is 1-3, quote or closely paraphrase the specific CV line you relied on, in quotation marks, then say briefly why it earns that score. If the score is 0, the reason is exactly "No instance found."
+- "reason" is ONE line (max ~35 words). For 1-3, quote or closely paraphrase the CV line you relied on, then say briefly why. For 0, say in a few words what is missing.
 - Reply with JSON only.`
+
+/** How to apply the rubric leniently and across industries. Shown to the model with every rubric. */
+export const READING_GUIDE = `HOW TO READ THIS RUBRIC (applies to every criterion):
+Scores:
+- 0 = nothing in the CV relates to this behaviour at all.
+- 1 = the behaviour shows up in some form, even if partial, adjacent, or missing who/what/result.
+- 2 = the behaviour is clearly demonstrated at least once. One detail (the exact organisation name, the precise result, the duration) may be implied rather than spelled out.
+- 3 = clearly demonstrated more than once, in different contexts.
+Equivalent evidence by criterion:
+1. Got a yes from someone they couldn't instruct: winning agreement from anyone outside their reporting line: enterprise clients (pilots, contracts, renewals, scope or price changes, CXO sign-off), regulators or government bodies (RBI, SEBI, ministries, customs, approvals), partners and integrations, investors, carriers or vendors they had to persuade or negotiate with.
+2. Stayed the named contact until closure: being the point of contact through a long-running effort to a clear end: client implementations, rollouts, migrations, launches, escalations, audits or onboarding, owned over weeks or months to go-live, sign-off or resolution.
+3. Caught the disruption before the customer felt it: handling something unplanned (incident, outage, regulatory change, vendor or partner failure, escalation, volume spike, deadline risk) so that customers or downstream teams were protected: "on time", "no downtime", "no customer impact", "met the deadline".
+4. Fixed it with what was already in the room: solving problems without extra headcount or budget: re-prioritising, process redesign, automation, a small team, extra hours, or an approach that the team kept using afterwards.`
 
 const ScoringReply = z.object({
   criteria: z
@@ -53,11 +69,11 @@ function block(label: string, text: string | null) {
 /** Rubric text given to the model. For SPM, the PM bar is included per criterion. */
 export function rubricPrompt(rubric: Rubric, pmRubric?: Rubric): string {
   const title = rubric.role === 'pm' ? 'PRODUCT MANAGER (PM)' : 'SENIOR PRODUCT MANAGER (SPM)'
-  const lines = [`RUBRIC: ${title}, version ${rubric.version}`, `SCORING GUIDE (all criteria):\n${rubric.scoring_guide}`]
+  const lines = [`RUBRIC: ${title}, version ${rubric.version}`, `SCORING GUIDE (all criteria):\n${rubric.scoring_guide}`, READING_GUIDE]
   if (rubric.role === 'spm') {
     lines.push(
-      'SPM RULE: for each criterion, first check the CV meets the PM strong description in full. ' +
-        'Only then apply the additional SPM bar. A CV that does not meet the PM bar cannot score above what it would score on the PM version.',
+      'SPM RULE: each SPM criterion is the PM behaviour plus an extra bar (shown below). Read it with the same lenient guide: ' +
+        'give 2 when the PM behaviour is clearly there and the extra bar is at least partly met, 3 when both are clearly met more than once.',
     )
   }
   for (const c of rubric.criteria) {
@@ -89,9 +105,6 @@ export function validateReply(rubric: Rubric, reply: ScoringReply): string | nul
   }
   for (const c of reply.criteria) {
     if (/\r|\n/.test(c.reason.trim())) return `criterion ${c.position}: reason must be one line`
-    const none = /no instance found/i.test(c.reason)
-    if (c.score === 0 && !none) return `criterion ${c.position}: a score of 0 must have the reason "No instance found."`
-    if (c.score > 0 && none) return `criterion ${c.position}: reason says no instance found but score is ${c.score}`
   }
   return null
 }
