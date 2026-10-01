@@ -132,9 +132,10 @@ export async function scoreAgainstRubric(
 }
 
 /**
- * The rubric's SPM rule, enforced in code: the PM bar must be met (PM score >= 2
- * on the same criterion) before the SPM extra bar counts. If it is not met, the
- * SPM score cannot exceed the PM score.
+ * The rubric's SPM rule, enforced in code: each SPM criterion is the PM bar plus
+ * an extra bar, so meeting it implies meeting the PM version. An SPM criterion
+ * score therefore never exceeds the PM score for the same criterion. (SPM totals
+ * can still differ from PM totals because the two rubrics weight criteria differently.)
  */
 export function applySpmGate(
   spm: Omit<CriterionScore, 'gated' | 'score'>[],
@@ -142,7 +143,7 @@ export function applySpmGate(
 ): CriterionScore[] {
   return spm.map((s) => {
     const pm = pmByPosition.get(s.position) ?? 0
-    const capped = pm < 2 ? Math.min(s.model_score, pm) : s.model_score
+    const capped = Math.min(s.model_score, pm)
     return { ...s, score: capped, gated: capped !== s.model_score }
   })
 }

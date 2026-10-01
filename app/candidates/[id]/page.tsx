@@ -123,7 +123,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
                           </div>
                           <p className="reason">{display(s.reason)}</p>
                           {s.gated && (
-                            <p className="gated">The model gave {s.model_score}; held to {s.score} because the PM bar for this criterion isn&apos;t met.</p>
+                            <p className="gated">The model gave {s.model_score}; held to {s.score} because an SPM score can&apos;t exceed the PM score for the same criterion.</p>
                           )}
                         </li>
                       ))}

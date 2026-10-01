@@ -128,18 +128,18 @@ describe('scoring', () => {
     expect(computeTotal(spm, s([1, 2, 2, 0], spm))).toBe(46)
   })
 
-  it('applies the SPM gate: no SPM credit above the PM score unless the PM bar (>= 2) is met', () => {
+  it('applies the SPM gate: an SPM criterion never scores above the same PM criterion', () => {
     const raw = [1, 2, 3, 4].map((position) => ({ criterion_id: `c${position}`, position, model_score: 3, reason: 'x' }))
     const gated = applySpmGate(raw, new Map([[1, 3], [2, 2], [3, 1], [4, 0]]))
-    expect(gated.map((g) => g.score)).toEqual([3, 3, 1, 0])
-    expect(gated.map((g) => g.gated)).toEqual([false, false, true, true])
+    expect(gated.map((g) => g.score)).toEqual([3, 2, 1, 0])
+    expect(gated.map((g) => g.gated)).toEqual([false, true, true, true])
   })
 
   it('end to end: SPM scores are gated by the PM scores from the same CV', async () => {
     fakeGemini({ pmScores: [2, 1, 0, 3], spmScores: [3, 3, 2, 3] })
     const cfg: AiConfig = { apiKey: 't', model: 'm', audit: () => {} }
     const r = await scoreBoth(cfg, { candidateId: null, redactedCv: '[CANDIDATE]', pm, spm, guard: buildPiiGuard(detectPii(SAMPLE_CV)) })
-    expect(r.spm.scores.map((s) => s.score)).toEqual([3, 1, 0, 3])
+    expect(r.spm.scores.map((s) => s.score)).toEqual([2, 1, 0, 3])
     expect(r.spm.total).toBe(computeTotal(spm, r.spm.scores))
   })
 })
